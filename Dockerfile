@@ -1,4 +1,4 @@
-FROM postgres:16.9 
+FROM postgres:15 
 ENV POSTGRES_USER=raya_admin 
 ENV POSTGRES_PASSWORD=R@y@_Umniah123
 ENV POSTGRES_DB=rayadb
