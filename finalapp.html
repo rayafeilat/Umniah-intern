@@ -1,0 +1,189 @@
+<!-- this website is for the final application of creating a VM-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8"/>
+   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+   <title>Raya's mini cloud</title>
+
+   <!-- Tailwind -->
+   <script src="https://cdn.tailwindcss.com"></script> <!-- saves from css long format -->
+   <!-- GSAP animation-->
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+
+<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 min-h-screen flex items-center justify-center text-white">
+  <div id="card" class="w-full max-w-lg p-8 bg-gray-800 rounded-2xl shadow-2xl transform scale-95 opacity-0">
+    <h1 id="title" class="text-3xl font-extrabold text-center mb-6 text-blue-400">🚀 VM maker machine</h1>
+
+    <div class="space-y-5">
+      <!-- VM Name -->
+      <div>
+        <label class="block mb-2 text-sm font-medium text-gray-300">VM Name</label>
+        <input id="vmName" type="text" placeholder="Enter VM name"
+          class="w-full px-4 py-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"/>
+      </div>
+
+      <!-- Docker file name -->
+      <div>
+        <label class="block mb-2 text-sm font-medium text-gray-300">Docker File</label>
+        <input id="dockerFile" type="text" placeholder="Enter Dockerfile name"
+          class="w-full px-4 py-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-green-500 transition"/>
+      </div>
+
+      <!-- Dropdown -->
+      <div>
+        <label class="block mb-2 text-sm font-medium text-gray-300">Select image type</label>
+        <select id="imageType"
+          class="w-full px-4 py-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition">
+          <option value="Ubuntu">Ubuntu</option>
+          <option value="Debian">Debian</option>
+        </select>
+      </div>
+
+      <!-- Button -->
+      <div class="text-center">
+        <button id="createVM"
+          class="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-lg font-semibold shadow-lg hover:scale-105 hover:shadow-blue-500/50 transition-all duration-300">
+          Create VM
+        </button>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div id="output" class="mt-6 text-center text-green-400 font-semibold opacity-0"></div>
+
+    <!-- Action preview -->
+    <div class="action preview mt-6" aria-live="polite">
+      <div class="toolbar flex justify-between items-center mb-2">
+        <div class="meta">Action preview - playbook</div>
+        <div class="controls">
+          <button class="copy bg-gray-700 px-3 py-1 rounded" id="copyButton" title="Copy output">Copy</button>
+        </div>
+      </div>
+      <textarea id="yamlOutput" class="w-full h-64 p-3 bg-gray-900 rounded-lg text-green-300 font-mono text-sm"
+        readonly placeholder="Your generated YAML file will appear here..."></textarea>
+
+      <div class="flex gap-4 mt-2 text-xs text-gray-400">
+        <div>Generated: <span id="generatedAt">--</span></div>
+        <div>Format: <strong>Ansible + Docker</strong></div>
+      </div>
+    </div>
+
+    
+  </div>
+
+  <script>
+  // Page entrance animation
+  gsap.to("#card",{duration: 1, scale: 1, opacity:1, ease: "back.out(1.7)"});
+  gsap.from("#title", { duration: 1, y: -50, opacity: 0, delay: 0.5, ease: "power2.out" });
+
+  // Button click logic
+  document.getElementById("createVM").addEventListener("click", ()=>{
+    const vmName=document.getElementById("vmName").value || "default_vm";
+    const dockerFile=document.getElementById("dockerFile").value || "";
+    const imageType=document.getElementById("imageType").value;
+    const output=document.getElementById("output");
+
+    output.textContent = `Cooking your VM '${vmName}' with ${imageType} using ${dockerFile}...`;
+    gsap.fromTo(output,{opacity: 0, y: 20 }, { duration: 0.8, opacity: 1, y: 0, ease: "power2.out" });
+
+    // Build and show YAML playbook
+    const playbook = buildAnsiblePlay(vmName, dockerFile, imageType);
+    document.getElementById("yamlOutput").value = playbook;
+    const time=document.getElementById("generatedAt").textContent = new Date().toLocaleTimeString();
+
+    // Flask request with fetch
+    fetch("https://94.127.213.228:5000/create-vm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vmName: vmName,
+        dockerFile: dockerFile,
+        imageType: imageType,
+        time: time,
+        playbook: playbook
+      })
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.text().then(err => { throw new Error(err) });
+      }
+      return response.json();
+    })
+    .then(data => {
+      alert("✅ Successfully created!\n" + JSON.stringify(data, null, 2));
+    })
+    .catch(err => {
+      alert("❌ Error: " + err.message);
+    });
+  });
+
+  // ✅ function must be outside
+  function buildAnsiblePlay(vmName, dockerFile, imageType){
+    return `---
+- name: Simulated VM for ${vmName}
+  hosts: targets
+  become: true
+  vars:
+    vm_name: "${vmName}"
+    docker_image: "${imageType.toLowerCase()}:latest"
+    dockerfile_name: "${dockerFile}"
+    private_ip: 94.127.213.240
+  tasks:
+    - name: Ensure docker is installed
+      ignore_errors: true
+      apt:
+        name: docker.io
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Create a temp dir
+      file:
+        path: /tmp/{{ vm_name }}
+        state: directory
+        mode: '0755'
+
+    - name: Build docker image (if Dockerfile provided)
+      shell: >
+        docker build -t {{ vm_name }} -f {{ dockerfile_name }} .
+      args:
+        chdir: /tmp/{{ vm_name }}
+      when: dockerfile_name | length > 0
+
+    - name: Create a workdir
+      file:
+        path: /opt/{{ vm_name }}
+        state: directory
+        mode: '0755'
+
+    - name: Run container as simulated VM
+      community.docker.docker_container:
+        name: "{{ vm_name }}"
+        image: "{{ vm_name if (dockerfile_name | length) > 0 else docker_image }}"
+        state: started
+        restart_policy: unless-stopped
+        cpu_period: 100000
+        env:
+          SIMULATED_PRIVATE_IP: "{{ private_ip }}"
+        published_ports: []
+`;
+  }
+
+  // Copy button logic
+  document.getElementById('copyButton').addEventListener('click', async()=>{
+    try {
+      const yaml=document.getElementById('yamlOutput').value;
+      await navigator.clipboard.writeText(yaml);
+      const btn=document.getElementById('copyButton');
+      const old=btn.textContent;
+      btn.textContent='Copied ✔';
+      setTimeout(()=> btn.textContent=old, 1600);
+    } catch(e){
+      alert('Copy failed — your browser may block clipboard access. You can select and copy manually.');
+    }
+  });
+</script>
+
+</body>
+</html>
